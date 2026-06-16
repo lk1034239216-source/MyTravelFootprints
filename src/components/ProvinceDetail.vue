@@ -96,11 +96,11 @@ const fetchGeo = async (adcode) => {
     return taiwanGeo
   }
 
-  const url = `https://geo.datav.aliyun.com/areas_v3/bound/${key}_full.json`
-  console.log(`[fetchGeo] 请求: ${url}`)
-  const resp = await fetch(url)
+  const localUrl = `/maps/${key}.json`
+  console.log(`[fetchGeo] 请求本地: ${localUrl}`)
+  const resp = await fetch(localUrl)
   if (!resp.ok) {
-    console.error(`[fetchGeo] 失败: HTTP ${resp.status} for adcode=${key}`)
+    console.error(`[fetchGeo] 本地加载失败: HTTP ${resp.status} for adcode=${key}`)
     throw new Error(`加载地图 ${adcode} 失败 (HTTP ${resp.status})`)
   }
   const geo = await resp.json()
