@@ -9,6 +9,7 @@ const { cityRecords, cityMarkers, getProvinceProgress, getAllRoutes } = useTrave
 const chartRef = ref(null)
 let chart = null
 let geoData = null
+let cityCoords = {}
 const activeLayer = ref('none')
 
 const fullNameToShort = {
@@ -42,35 +43,13 @@ const TRANSPORT_COLORS = {
   other: '#a78bfa'
 }
 
-const getGeoCoord = (cityName) => {
-  if (!chart) return null
+const loadCoords = async () => {
   try {
-    const model = chart.getModel()
-    const geo = model.getComponent('geo')
-    if (!geo) return null
-    const cs = geo.coordinateSystem
-    if (!cs) return null
-    const region = cs.getRegionByName?.(cityName)
-    if (region?.center) return region.center
-  } catch {}
-  try {
-    const features = geoData?.features || []
-    const f = features.find(feat => feat.properties?.name === cityName)
-    if (f) {
-      const center = f.properties.center || f.properties.centroid
-      if (center) return center
-      const coords = f.geometry?.type === 'Polygon'
-        ? f.geometry.coordinates[0]
-        : f.geometry?.type === 'MultiPolygon'
-          ? f.geometry.coordinates[0][0] : null
-      if (coords) {
-        const lngs = coords.map(c => c[0])
-        const lats = coords.map(c => c[1])
-        return [(Math.min(...lngs) + Math.max(...lngs)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2]
-      }
-    }
-  } catch {}
-  return null
+    const resp = await fetch('/city-coords.json')
+    if (!resp.ok) { console.error('[ChinaMap] city-coords.json 加载失败'); return }
+    cityCoords = await resp.json()
+    console.log(`[ChinaMap] 城市坐标加载完成: ${Object.keys(cityCoords).length} 个城市`)
+  } catch (e) { console.error('[ChinaMap] 城市坐标加载失败:', e) }
 }
 
 const buildAllSeries = () => {
@@ -82,7 +61,7 @@ const buildAllSeries = () => {
       const data = []
       for (const [cityName, types] of Object.entries(cityMarkers.value)) {
         if (!types.includes(markerType.key)) continue
-        const coord = getGeoCoord(cityName)
+        const coord = cityCoords[cityName]
         if (!coord) continue
         data.push({ name: cityName, value: [...coord, cityName] })
       }
@@ -113,8 +92,8 @@ const buildAllSeries = () => {
   if (layer === 'routes' || layer === 'both') {
     const routes = getAllRoutes()
     const linesData = routes.map(r => {
-      const fromCoord = getGeoCoord(r.from)
-      const toCoord = getGeoCoord(r.to)
+      const fromCoord = cityCoords[r.from]
+      const toCoord = cityCoords[r.to]
       if (!fromCoord || !toCoord) return null
       return { coords: [fromCoord, toCoord], transport: r.transport, from: r.from, to: r.to }
     }).filter(Boolean)
@@ -159,6 +138,7 @@ const initChart = async () => {
   if (!chartRef.value) return
   chart = echarts.init(chartRef.value)
   try {
+    await loadCoords()
     console.log('[ChinaMap] 加载 /china.json')
     const resp = await fetch('/china.json')
     if (!resp.ok) throw new Error(`加载全国地图失败 (HTTP ${resp.status})`)
