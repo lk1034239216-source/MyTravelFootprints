@@ -17,7 +17,9 @@ const form = ref({
   date: props.record?.date || new Date().toISOString().split('T')[0],
   thoughts: props.record?.thoughts || '',
   images: props.record?.images ? [...props.record.images] : [],
-  companions: props.record?.companions ? [...props.record.companions] : []
+  companions: props.record?.companions ? [...props.record.companions] : [],
+  fromCity: props.record?.fromCity || '',
+  transportType: props.record?.transportType || ''
 })
 
 const MAX = 9
@@ -32,7 +34,43 @@ const showCompanionInput = ref(false)
 const newCompanionName = ref('')
 const companionList = computed(() => getCompanions())
 
-onMounted(() => { requestAnimationFrame(() => { visible.value = true }) })
+const transportOptions = [
+  { key: 'plane', icon: '✈️', label: '飞机' },
+  { key: 'train', icon: '🚄', label: '高铁' },
+  { key: 'car', icon: '🚗', label: '自驾' },
+  { key: 'other', icon: '🗺️', label: '其他' }
+]
+
+const CITY_LIST = [
+  '北京','天津','上海','重庆','广州','深圳','成都','杭州','武汉','南京',
+  '西安','长沙','郑州','合肥','昆明','贵阳','福州','厦门','南昌','太原',
+  '济南','青岛','哈尔滨','长春','沈阳','大连','兰州','银川','西宁',
+  '乌鲁木齐','拉萨','呼和浩特','南宁','海口','三亚','珠海','汕头',
+  '苏州','无锡','宁波','温州','常州','徐州','烟台','潍坊',
+  '洛阳','宜昌','襄阳','岳阳','常德','桂林','柳州','遵义',
+  '绵阳','宜宾','大理','丽江','西双版纳'
+]
+const fromCityQuery = ref('')
+const showFromDropdown = ref(false)
+const filteredCities = computed(() => {
+  if (!fromCityQuery.value) return CITY_LIST
+  return CITY_LIST.filter(c => c.includes(fromCityQuery.value))
+})
+
+const selectFromCity = (city) => {
+  form.value.fromCity = city
+  fromCityQuery.value = city
+  showFromDropdown.value = false
+}
+const clearFromCity = () => {
+  form.value.fromCity = ''
+  fromCityQuery.value = ''
+}
+
+onMounted(() => {
+  requestAnimationFrame(() => { visible.value = true })
+  if (form.value.fromCity) fromCityQuery.value = form.value.fromCity
+})
 
 const close = () => { visible.value = false; setTimeout(() => emit('close'), 300) }
 const overlayClick = e => { if (e.target === e.currentTarget) close() }
@@ -43,7 +81,9 @@ const save = () => {
     date: form.value.date,
     thoughts: form.value.thoughts,
     images: form.value.images,
-    companions: form.value.companions
+    companions: form.value.companions,
+    fromCity: form.value.fromCity,
+    transportType: form.value.transportType
   })
 }
 
@@ -101,18 +141,56 @@ const handleRemoveCompanion = (name) => {
           </div>
 
           <div class="field">
+            <label>🚀 出发城市 <span class="optional">（可选）</span></label>
+            <div class="from-city-wrap">
+              <div class="from-input-row">
+                <input
+                  v-model="fromCityQuery"
+                  placeholder="输入或选择出发城市"
+                  @focus="showFromDropdown = true"
+                  @input="form.fromCity = fromCityQuery"
+                />
+                <button v-if="form.fromCity" class="clear-btn" @click="clearFromCity">×</button>
+              </div>
+              <div v-if="showFromDropdown" class="dropdown">
+                <div class="dropdown-list">
+                  <div
+                    v-for="city in filteredCities" :key="city"
+                    class="dropdown-item"
+                    :class="{ active: form.fromCity === city }"
+                    @mousedown.prevent="selectFromCity(city)"
+                  >
+                    {{ city }}
+                  </div>
+                  <div v-if="filteredCities.length === 0" class="dropdown-empty">无匹配城市</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="field" v-if="form.fromCity">
+            <label>🚆 交通工具</label>
+            <div class="transport-grid">
+              <div
+                v-for="t in transportOptions" :key="t.key"
+                class="transport-item"
+                :class="{ active: form.transportType === t.key }"
+                @click="form.transportType = form.transportType === t.key ? '' : t.key"
+              >
+                <span class="t-icon">{{ t.icon }}</span>
+                <span class="t-label">{{ t.label }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="field">
             <label>
               👥 同行人
               <span class="companion-count" v-if="form.companions.length">{{ form.companions.length }} 人</span>
             </label>
             <div class="companion-area">
               <div class="companion-tags" v-if="companionList.length || form.companions.length">
-                <span
-                  v-for="c in companionList" :key="c"
-                  class="companion-tag"
-                  :class="{ selected: isCompanionSelected(c) }"
-                  @click="toggleCompanion(c)"
-                >
+                <span v-for="c in companionList" :key="c" class="companion-tag" :class="{ selected: isCompanionSelected(c) }" @click="toggleCompanion(c)">
                   {{ c }}
                   <button class="tag-remove" @click.stop="handleRemoveCompanion(c)" title="删除此人">×</button>
                 </span>
@@ -173,12 +251,36 @@ h3 { font-size: 18px; font-weight: 700; background: linear-gradient(135deg,#60a5
 .field:last-child { margin-bottom: 0; }
 label { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.75); margin-bottom: 8px; }
 .count { font-weight: 400; color: rgba(255,255,255,0.35); margin-left: auto; }
+.optional { font-weight: 400; color: rgba(255,255,255,0.35); font-size: 12px; }
 .companion-count { font-weight: 400; color: #60a5fa; margin-left: auto; font-size: 12px; }
 input[type="date"], textarea { width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 14px; color: #e2e8f0; font-size: 14px; font-family: inherit; transition: border-color 0.2s; box-sizing: border-box; }
 input:focus, textarea:focus { outline: none; border-color: rgba(96,165,250,0.5); box-shadow: 0 0 0 3px rgba(96,165,250,0.08); }
 input::-webkit-calendar-picker-indicator { filter: invert(1); cursor: pointer; }
 textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
 ::placeholder { color: rgba(255,255,255,0.25); }
+
+.from-city-wrap { position: relative; }
+.from-input-row { display: flex; gap: 6px; }
+.from-input-row input { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 14px; color: #e2e8f0; font-size: 14px; }
+.clear-btn { width: 36px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; color: rgba(255,255,255,0.5); cursor: pointer; font-size: 16px; transition: all 0.2s; }
+.clear-btn:hover { background: rgba(239,68,68,0.2); color: #f87171; }
+.dropdown { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: #1e293b; border: 1px solid rgba(96,165,250,0.2); border-radius: 10px; max-height: 200px; overflow-y: auto; z-index: 10; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+.dropdown-list { padding: 4px; }
+.dropdown-item { padding: 8px 12px; border-radius: 6px; font-size: 13px; color: rgba(255,255,255,0.75); cursor: pointer; transition: background 0.15s; }
+.dropdown-item:hover { background: rgba(96,165,250,0.15); }
+.dropdown-item.active { background: rgba(96,165,250,0.2); color: #60a5fa; }
+.dropdown-empty { padding: 12px; text-align: center; font-size: 12px; color: rgba(255,255,255,0.3); }
+.dropdown::-webkit-scrollbar { width: 4px; }
+.dropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+.transport-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.transport-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; cursor: pointer; transition: all 0.2s; }
+.transport-item:hover { background: rgba(255,255,255,0.08); border-color: rgba(96,165,250,0.3); }
+.transport-item.active { background: rgba(96,165,250,0.15); border-color: rgba(96,165,250,0.5); }
+.t-icon { font-size: 24px; }
+.t-label { font-size: 12px; color: rgba(255,255,255,0.6); }
+.transport-item.active .t-label { color: #60a5fa; }
+
 .img-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .img-cell { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.05); }
 .img-cell img { width: 100%; height: 100%; object-fit: cover; }
@@ -196,7 +298,6 @@ textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
 .companion-tag.selected { background: rgba(96,165,250,0.2); border-color: rgba(96,165,250,0.5); color: #60a5fa; }
 .tag-remove { background: none; border: none; color: rgba(255,255,255,0.3); cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1; transition: color 0.2s; }
 .tag-remove:hover { color: #ef4444; }
-.companion-add { }
 .add-companion-btn { background: none; border: 1px dashed rgba(255,255,255,0.15); border-radius: 20px; color: rgba(255,255,255,0.4); font-size: 12px; padding: 5px 14px; cursor: pointer; transition: all 0.2s; }
 .add-companion-btn:hover { border-color: rgba(96,165,250,0.4); color: #60a5fa; }
 .companion-input-row { display: flex; gap: 6px; }
@@ -219,5 +320,6 @@ textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
   .head, .body, .foot { padding-left: 16px; padding-right: 16px; }
   h3 { font-size: 16px; }
   .img-grid { gap: 6px; }
+  .transport-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>

@@ -38,6 +38,8 @@ export function useTravelData() {
           thoughts: row.thoughts || '',
           images: (row.images || []).map((url, i) => ({ id: `${row.id}_${i}`, url, name: '' })),
           companions: row.companions || [],
+          fromCity: row.from_city || '',
+          transportType: row.transport_type || '',
           createdAt: row.created_at
         })
       }
@@ -80,7 +82,9 @@ export function useTravelData() {
           visit_date: record.date,
           thoughts: record.thoughts || '',
           images: imageUrls,
-          companions: record.companions || []
+          companions: record.companions || [],
+          from_city: record.fromCity || '',
+          transport_type: record.transportType || ''
         })
         .select()
         .single()
@@ -89,7 +93,10 @@ export function useTravelData() {
       const newRecord = {
         id: data.id, date: data.visit_date, thoughts: data.thoughts,
         images: imageUrls.map((url, i) => ({ id: `${data.id}_${i}`, url, name: '' })),
-        companions: data.companions || [], createdAt: data.created_at
+        companions: data.companions || [],
+        fromCity: data.from_city || '',
+        transportType: data.transport_type || '',
+        createdAt: data.created_at
       }
       if (!cityRecords.value[cityName]) cityRecords.value[cityName] = []
       cityRecords.value[cityName].unshift(newRecord)
@@ -112,6 +119,8 @@ export function useTravelData() {
       if (data.thoughts !== undefined) updateData.thoughts = data.thoughts
       if (imageUrls !== undefined) updateData.images = imageUrls
       if (data.companions !== undefined) updateData.companions = data.companions
+      if (data.fromCity !== undefined) updateData.from_city = data.fromCity
+      if (data.transportType !== undefined) updateData.transport_type = data.transportType
       updateData.updated_at = new Date().toISOString()
 
       const { error } = await supabase.from(TABLE).update(updateData).eq('id', recordId)
@@ -125,6 +134,8 @@ export function useTravelData() {
           if (data.thoughts !== undefined) records[idx].thoughts = data.thoughts
           if (imageUrls) records[idx].images = imageUrls.map((url, i) => ({ id: `${recordId}_${i}`, url, name: '' }))
           if (data.companions) records[idx].companions = data.companions
+          if (data.fromCity !== undefined) records[idx].fromCity = data.fromCity
+          if (data.transportType !== undefined) records[idx].transportType = data.transportType
         }
       }
     } catch (e) { console.error('[Supabase] 更新失败:', e); throw e }
@@ -147,6 +158,23 @@ export function useTravelData() {
   const getVisitCount = (cityName) => cityRecords.value[cityName]?.length || 0
   const isVisited = (cityName) => getVisitCount(cityName) > 0
   const getSortedRecords = (cityName) => [...getRecords(cityName)].sort((a, b) => new Date(b.date) - new Date(a.date))
+
+  const getAllRoutes = () => {
+    const routes = []
+    for (const [toCity, records] of Object.entries(cityRecords.value)) {
+      for (const rec of records) {
+        if (rec.fromCity) {
+          routes.push({
+            from: rec.fromCity,
+            to: toCity,
+            transport: rec.transportType || 'other',
+            date: rec.date
+          })
+        }
+      }
+    }
+    return routes
+  }
 
   const getAllStats = () => {
     const cities = Object.keys(cityRecords.value).filter(k => cityRecords.value[k].length > 0)
@@ -195,7 +223,7 @@ export function useTravelData() {
     loadFromDB, clearLocal,
     getRecords, getVisitCount, isVisited,
     addRecord, updateRecord, deleteRecord,
-    getSortedRecords, getAllStats,
+    getSortedRecords, getAllStats, getAllRoutes,
     getCompanions, addCompanion, removeCompanion,
     getMarkers, hasMarker, toggleMarker, getMarkerIcons,
     getProvinceProgress

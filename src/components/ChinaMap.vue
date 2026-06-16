@@ -5,7 +5,7 @@ import { useTravelData, MARKER_TYPES } from '../composables/useTravelData.js'
 
 const emit = defineEmits(['province-click'])
 
-const { cityRecords, cityMarkers, getProvinceProgress } = useTravelData()
+const { cityRecords, cityMarkers, getProvinceProgress, getAllRoutes } = useTravelData()
 const chartRef = ref(null)
 let chart = null
 let geoData = null
@@ -44,7 +44,14 @@ const loadCoords = async () => {
   } catch (e) { console.error('[ChinaMap] 城市坐标加载失败:', e) }
 }
 
-const buildMarkerSeries = () => {
+const TRANSPORT_COLORS = {
+  plane: '#38bdf8',
+  train: '#fbbf24',
+  car: '#4ade80',
+  other: '#a78bfa'
+}
+
+const buildAllSeries = () => {
   const series = []
   for (const markerType of MARKER_TYPES) {
     const data = []
@@ -97,6 +104,64 @@ const buildMarkerSeries = () => {
       }
     })
   }
+
+  const routes = getAllRoutes()
+  const linesData = routes.map(r => {
+    const fromCoord = cityCoords[r.from]
+    const toCoord = cityCoords[r.to]
+    if (!fromCoord || !toCoord) return null
+    return {
+      coords: [fromCoord, toCoord],
+      transport: r.transport,
+      from: r.from,
+      to: r.to
+    }
+  }).filter(Boolean)
+
+  if (linesData.length > 0) {
+    series.push({
+      name: '旅行航线',
+      type: 'lines',
+      coordinateSystem: 'geo',
+      zlevel: 1,
+      data: linesData.map(d => ({
+        coords: d.coords,
+        lineStyle: {
+          color: TRANSPORT_COLORS[d.transport] || TRANSPORT_COLORS.other,
+          opacity: 0.5,
+          width: 1.5,
+          curveness: 0.2
+        }
+      })),
+      effect: {
+        show: true,
+        period: 4,
+        trailLength: 0.6,
+        symbol: 'circle',
+        symbolSize: 4,
+        color: '#fff'
+      },
+      lineStyle: {
+        curveness: 0.2,
+        opacity: 0.4
+      },
+      tooltip: {
+        backgroundColor: 'rgba(15,23,42,0.95)',
+        borderColor: 'rgba(96,165,250,0.3)',
+        borderWidth: 1,
+        padding: [10, 14],
+        textStyle: { color: '#e2e8f0', fontSize: 13 },
+        formatter: p => {
+          const d = linesData[p.dataIndex]
+          if (!d) return ''
+          const transportIcons = { plane: '✈️', train: '🚄', car: '🚗', other: '🗺️' }
+          return `<div style="font-weight:600;font-size:14px">${d.from} → ${d.to}</div>` +
+            `<div style="margin-top:4px">${transportIcons[d.transport] || '🗺️'} ${d.transport}</div>`
+        }
+      }
+    })
+  }
+
   return series
 }
 
@@ -144,7 +209,7 @@ const updateOption = () => {
     return { name, itemStyle: base }
   })
 
-  const markerSeries = buildMarkerSeries()
+  const markerSeries = buildAllSeries()
   console.log(`[ChinaMap] 标记系列数: ${markerSeries.length}`)
 
   chart.setOption({
