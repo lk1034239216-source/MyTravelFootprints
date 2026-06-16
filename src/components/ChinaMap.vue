@@ -9,6 +9,7 @@ const { cityRecords, cityMarkers, getProvinceProgress, getAllRoutes } = useTrave
 const chartRef = ref(null)
 let chart = null
 let geoData = null
+const activeLayer = ref('none')
 
 const fullNameToShort = {
   '北京市': '北京', '天津市': '天津', '上海市': '上海', '重庆市': '重庆',
@@ -74,68 +75,75 @@ const getGeoCoord = (cityName) => {
 
 const buildAllSeries = () => {
   const series = []
-  for (const markerType of MARKER_TYPES) {
-    const data = []
-    for (const [cityName, types] of Object.entries(cityMarkers.value)) {
-      if (!types.includes(markerType.key)) continue
-      const coord = getGeoCoord(cityName)
-      if (!coord) continue
-      data.push({ name: cityName, value: [...coord, cityName] })
+  const layer = activeLayer.value
+
+  if (layer === 'markers' || layer === 'both') {
+    for (const markerType of MARKER_TYPES) {
+      const data = []
+      for (const [cityName, types] of Object.entries(cityMarkers.value)) {
+        if (!types.includes(markerType.key)) continue
+        const coord = getGeoCoord(cityName)
+        if (!coord) continue
+        data.push({ name: cityName, value: [...coord, cityName] })
+      }
+      if (data.length === 0) continue
+      const style = MARKER_STYLES[markerType.key] || { color: '#fff', symbolSize: 16 }
+      series.push({
+        name: markerType.label,
+        type: 'effectScatter',
+        coordinateSystem: 'geo',
+        data,
+        symbolSize: style.symbolSize,
+        showEffectOn: 'render',
+        rippleEffect: { brushType: 'stroke', scale: 3, period: 4 },
+        itemStyle: { color: style.color, shadowColor: style.color, shadowBlur: 8 },
+        label: { show: true, formatter: p => p.value[2], position: 'right', distance: 8, fontSize: 11, color: 'rgba(255,255,255,0.8)', textShadowColor: 'rgba(0,0,0,0.6)', textShadowBlur: 4 },
+        tooltip: {
+          backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(96,165,250,0.3)', borderWidth: 1, padding: [10, 14], textStyle: { color: '#e2e8f0', fontSize: 13 },
+          formatter: p => {
+            const city = p.value[2], types = cityMarkers.value[city] || []
+            const icons = types.map(t => MARKER_TYPES.find(m => m.key === t)).filter(Boolean)
+            return `<div style="font-weight:600;font-size:14px;margin-bottom:6px">${city}</div>` + icons.map(m => `<div style="margin:2px 0">${m.icon} ${m.label}</div>`).join('')
+          }
+        }
+      })
     }
-    if (data.length === 0) continue
-    const style = MARKER_STYLES[markerType.key] || { color: '#fff', symbolSize: 16 }
-    series.push({
-      name: markerType.label,
-      type: 'effectScatter',
-      coordinateSystem: 'geo',
-      data,
-      symbolSize: style.symbolSize,
-      showEffectOn: 'render',
-      rippleEffect: { brushType: 'stroke', scale: 3, period: 4 },
-      itemStyle: { color: style.color, shadowColor: style.color, shadowBlur: 8 },
-      label: { show: true, formatter: p => p.value[2], position: 'right', distance: 8, fontSize: 11, color: 'rgba(255,255,255,0.8)', textShadowColor: 'rgba(0,0,0,0.6)', textShadowBlur: 4 },
-      tooltip: {
-        backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(96,165,250,0.3)', borderWidth: 1, padding: [10, 14], textStyle: { color: '#e2e8f0', fontSize: 13 },
-        formatter: p => {
-          const city = p.value[2], types = cityMarkers.value[city] || []
-          const icons = types.map(t => MARKER_TYPES.find(m => m.key === t)).filter(Boolean)
-          return `<div style="font-weight:600;font-size:14px;margin-bottom:6px">${city}</div>` + icons.map(m => `<div style="margin:2px 0">${m.icon} ${m.label}</div>`).join('')
-        }
-      }
-    })
   }
 
-  const routes = getAllRoutes()
-  const linesData = routes.map(r => {
-    const fromCoord = getGeoCoord(r.from)
-    const toCoord = getGeoCoord(r.to)
-    if (!fromCoord || !toCoord) return null
-    return { coords: [fromCoord, toCoord], transport: r.transport, from: r.from, to: r.to }
-  }).filter(Boolean)
+  if (layer === 'routes' || layer === 'both') {
+    const routes = getAllRoutes()
+    const linesData = routes.map(r => {
+      const fromCoord = getGeoCoord(r.from)
+      const toCoord = getGeoCoord(r.to)
+      if (!fromCoord || !toCoord) return null
+      return { coords: [fromCoord, toCoord], transport: r.transport, from: r.from, to: r.to }
+    }).filter(Boolean)
 
-  if (linesData.length > 0) {
-    series.push({
-      name: '旅行航线',
-      type: 'lines',
-      coordinateSystem: 'geo',
-      zlevel: 1,
-      data: linesData.map(d => ({
-        coords: d.coords,
-        lineStyle: { color: TRANSPORT_COLORS[d.transport] || TRANSPORT_COLORS.other, opacity: 0.5, width: 1.5, curveness: 0.2 }
-      })),
-      effect: { show: true, period: 4, trailLength: 0.6, symbol: 'circle', symbolSize: 4, color: '#fff' },
-      lineStyle: { curveness: 0.2, opacity: 0.4 },
-      tooltip: {
-        backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(96,165,250,0.3)', borderWidth: 1, padding: [10, 14], textStyle: { color: '#e2e8f0', fontSize: 13 },
-        formatter: p => {
-          const d = linesData[p.dataIndex]
-          if (!d) return ''
-          const icons = { plane: '✈️', train: '🚄', car: '🚗', other: '🗺️' }
-          return `<div style="font-weight:600;font-size:14px">${d.from} → ${d.to}</div><div style="margin-top:4px">${icons[d.transport] || '🗺️'} ${d.transport}</div>`
+    if (linesData.length > 0) {
+      series.push({
+        name: '旅行航线',
+        type: 'lines',
+        coordinateSystem: 'geo',
+        zlevel: 1,
+        data: linesData.map(d => ({
+          coords: d.coords,
+          lineStyle: { color: TRANSPORT_COLORS[d.transport] || TRANSPORT_COLORS.other, opacity: 0.5, width: 1.5, curveness: 0.2 }
+        })),
+        effect: { show: true, period: 4, trailLength: 0.6, symbol: 'circle', symbolSize: 4, color: '#fff' },
+        lineStyle: { curveness: 0.2, opacity: 0.4 },
+        tooltip: {
+          backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(96,165,250,0.3)', borderWidth: 1, padding: [10, 14], textStyle: { color: '#e2e8f0', fontSize: 13 },
+          formatter: p => {
+            const d = linesData[p.dataIndex]
+            if (!d) return ''
+            const icons = { plane: '✈️', train: '🚄', car: '🚗', other: '🗺️' }
+            return `<div style="font-weight:600;font-size:14px">${d.from} → ${d.to}</div><div style="margin-top:4px">${icons[d.transport] || '🗺️'} ${d.transport}</div>`
+          }
         }
-      }
-    })
+      })
+    }
   }
+
   return series
 }
 
@@ -224,7 +232,7 @@ const updateOption = () => {
   }, true)
 }
 
-watch([cityRecords, cityMarkers], () => { nextTick(updateOption) }, { deep: true })
+watch([cityRecords, cityMarkers, activeLayer], () => { nextTick(updateOption) }, { deep: true })
 
 let ro = null
 const handleResize = () => chart?.resize()
@@ -243,6 +251,20 @@ onUnmounted(() => {
 
 <template>
   <div class="map-wrapper">
+    <div class="layer-toggle">
+      <button
+        v-for="opt in [
+          { key: 'none', label: '纯地图' },
+          { key: 'markers', label: '📍 标记' },
+          { key: 'routes', label: '✈️ 轨迹' },
+          { key: 'both', label: '全部' }
+        ]"
+        :key="opt.key"
+        class="layer-btn"
+        :class="{ active: activeLayer === opt.key }"
+        @click="activeLayer = opt.key"
+      >{{ opt.label }}</button>
+    </div>
     <div class="map-container" ref="chartRef"></div>
     <div class="map-legend">
       <div class="leg-item"><span class="dot gray"></span>未探索</div>
@@ -258,6 +280,10 @@ onUnmounted(() => {
 <style scoped>
 .map-wrapper { background: rgba(255,255,255,0.03); border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); padding: 20px 24px 16px; position: relative; }
 .map-wrapper::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(96,165,250,0.3), transparent); }
+.layer-toggle { display: flex; gap: 6px; margin-bottom: 12px; justify-content: center; }
+.layer-btn { padding: 7px 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.5); font-size: 13px; cursor: pointer; transition: all 0.2s; }
+.layer-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(96,165,250,0.3); color: rgba(255,255,255,0.8); }
+.layer-btn.active { background: rgba(96,165,250,0.15); border-color: rgba(96,165,250,0.5); color: #60a5fa; }
 .map-container { width: 100%; height: 68vh; min-height: 480px; }
 .map-legend { display: flex; justify-content: center; gap: 18px; margin-top: 10px; flex-wrap: wrap; }
 .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,0.45); }
