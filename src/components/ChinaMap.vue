@@ -1,14 +1,15 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
-import { useTravelData } from '../composables/useTravelData.js'
+import { useTravelData, MARKER_TYPES } from '../composables/useTravelData.js'
 
 const emit = defineEmits(['province-click'])
 
-const { cityRecords, getProvinceProgress } = useTravelData()
+const { cityRecords, cityMarkers, getProvinceProgress } = useTravelData()
 const chartRef = ref(null)
 let chart = null
 let geoData = null
+let cityCoords = {}
 
 const fullNameToShort = {
   '北京市': '北京', '天津市': '天津', '上海市': '上海', '重庆市': '重庆',
@@ -26,6 +27,79 @@ const fullNameToShort = {
 const SAR_PROVINCES = { '香港': '广东', '澳门': '广东' }
 const allProvinces = Object.values(fullNameToShort).filter((v, i, a) => a.indexOf(v) === i)
 
+const MARKER_STYLES = {
+  home:     { color: '#f59e0b', symbolSize: 18 },
+  school:   { color: '#8b5cf6', symbolSize: 18 },
+  work:     { color: '#3b82f6', symbolSize: 18 },
+  hometown: { color: '#10b981', symbolSize: 20 },
+  wish:     { color: '#ec4899', symbolSize: 16 }
+}
+
+const loadCoords = async () => {
+  try {
+    const resp = await fetch('/city-coords.json')
+    if (!resp.ok) { console.error('[ChinaMap] city-coords.json 加载失败'); return }
+    cityCoords = await resp.json()
+    console.log(`[ChinaMap] 城市坐标加载完成: ${Object.keys(cityCoords).length} 个城市`)
+  } catch (e) { console.error('[ChinaMap] 城市坐标加载失败:', e) }
+}
+
+const buildMarkerSeries = () => {
+  const series = []
+  for (const markerType of MARKER_TYPES) {
+    const data = []
+    for (const [cityName, types] of Object.entries(cityMarkers.value)) {
+      if (!types.includes(markerType.key)) continue
+      const coord = cityCoords[cityName]
+      if (!coord) continue
+      data.push({
+        name: cityName,
+        value: [...coord, cityName],
+        markerType: markerType.key
+      })
+    }
+    if (data.length === 0) continue
+
+    const style = MARKER_STYLES[markerType.key] || { color: '#fff', symbolSize: 16 }
+
+    series.push({
+      name: markerType.label,
+      type: 'effectScatter',
+      coordinateSystem: 'geo',
+      data,
+      symbolSize: style.symbolSize,
+      showEffectOn: 'render',
+      rippleEffect: { brushType: 'stroke', scale: 3, period: 4 },
+      itemStyle: { color: style.color, shadowColor: style.color, shadowBlur: 8 },
+      label: {
+        show: true,
+        formatter: p => p.value[2],
+        position: 'right',
+        distance: 8,
+        fontSize: 11,
+        color: 'rgba(255,255,255,0.8)',
+        textShadowColor: 'rgba(0,0,0,0.6)',
+        textShadowBlur: 4
+      },
+      tooltip: {
+        backgroundColor: 'rgba(15,23,42,0.95)',
+        borderColor: 'rgba(96,165,250,0.3)',
+        borderWidth: 1,
+        padding: [10, 14],
+        textStyle: { color: '#e2e8f0', fontSize: 13 },
+        formatter: p => {
+          const city = p.value[2]
+          const types = cityMarkers.value[city] || []
+          const icons = types.map(t => MARKER_TYPES.find(m => m.key === t)).filter(Boolean)
+          return `<div style="font-weight:600;font-size:14px;margin-bottom:6px">${city}</div>` +
+            icons.map(m => `<div style="margin:2px 0">${m.icon} ${m.label}</div>`).join('')
+        }
+      }
+    })
+  }
+  return series
+}
+
 const percentColor = (pct) => {
   if (pct === 0) return { areaColor: 'rgba(51,65,85,0.6)', borderColor: 'rgba(148,163,184,0.2)', borderWidth: 1 }
   if (pct <= 20) return { areaColor: { type: 'linear', x: 0, y: 0, x2: 1, y2: 1, colorStops: [{ offset: 0, color: 'rgba(56,189,248,0.35)' }, { offset: 1, color: 'rgba(99,102,241,0.25)' }] }, borderColor: 'rgba(56,189,248,0.4)', borderWidth: 1.5 }
@@ -35,18 +109,13 @@ const percentColor = (pct) => {
 }
 
 const initChart = async () => {
-  if (!chartRef.value) {
-    console.error('[ChinaMap] chartRef 不存在')
-    return
-  }
+  if (!chartRef.value) return
   chart = echarts.init(chartRef.value)
   try {
+    await loadCoords()
     console.log('[ChinaMap] 加载 /china.json')
     const resp = await fetch('/china.json')
-    if (!resp.ok) {
-      console.error('[ChinaMap] china.json 加载失败, status:', resp.status)
-      throw new Error(`加载全国地图失败 (HTTP ${resp.status})`)
-    }
+    if (!resp.ok) throw new Error(`加载全国地图失败 (HTTP ${resp.status})`)
     geoData = await resp.json()
     console.log(`[ChinaMap] 加载成功, features=${geoData.features?.length}`)
     geoData.features.forEach(f => { f.properties.name = fullNameToShort[f.properties.name] || f.properties.name })
@@ -58,14 +127,9 @@ const initChart = async () => {
         emit('province-click', target)
       }
     })
-  } catch (e) {
-    console.error('[ChinaMap] 内核失败:', e)
-  }
+  } catch (e) { console.error('[ChinaMap] 内核失败:', e) }
 
-  requestAnimationFrame(() => {
-    chart?.resize()
-    requestAnimationFrame(() => chart?.resize())
-  })
+  requestAnimationFrame(() => { chart?.resize(); requestAnimationFrame(() => chart?.resize()) })
 }
 
 const updateOption = () => {
@@ -75,17 +139,13 @@ const updateOption = () => {
     const { percent } = getProvinceProgress(provinceName)
     const isSAR = !!SAR_PROVINCES[name]
     const base = percentColor(percent)
-    if (isSAR && percent === 0) {
-      base.areaColor = 'rgba(88,60,130,0.45)'
-      base.borderColor = 'rgba(168,85,247,0.4)'
-      base.borderWidth = 1.5
-      base.borderType = 'dashed'
-    } else if (isSAR) {
-      base.borderColor = '#a855f7'
-      base.borderType = 'dashed'
-    }
+    if (isSAR && percent === 0) { base.areaColor = 'rgba(88,60,130,0.45)'; base.borderColor = 'rgba(168,85,247,0.4)'; base.borderWidth = 1.5; base.borderType = 'dashed' }
+    else if (isSAR) { base.borderColor = '#a855f7'; base.borderType = 'dashed' }
     return { name, itemStyle: base }
   })
+
+  const markerSeries = buildMarkerSeries()
+  console.log(`[ChinaMap] 标记系列数: ${markerSeries.length}`)
 
   chart.setOption({
     backgroundColor: 'transparent',
@@ -97,6 +157,7 @@ const updateOption = () => {
       padding: [14, 18],
       textStyle: { color: '#e2e8f0', fontSize: 14 },
       formatter: p => {
+        if (p.seriesType === 'effectScatter') return p.tooltip?.formatter?.(p) || p.name
         const name = p.name
         const isSAR = !!SAR_PROVINCES[name]
         const provinceName = SAR_PROVINCES[name] || name
@@ -104,10 +165,7 @@ const updateOption = () => {
         let h = `<div style="font-weight:600;font-size:15px;margin-bottom:6px">${name}${isSAR ? ' <span style="font-size:11px;color:#a855f7;background:rgba(168,85,247,0.15);padding:1px 6px;border-radius:4px">属广东</span>' : ''}</div>`
         if (total > 0) {
           const barColor = percent === 0 ? '#475569' : percent <= 20 ? '#38bdf8' : percent <= 50 ? '#38bdf8' : percent <= 80 ? '#fbbf24' : '#ef4444'
-          h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">`
-          h += `<div style="flex:1;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden">`
-          h += `<div style="height:100%;width:${percent}%;background:${barColor};border-radius:3px"></div></div>`
-          h += `<span style="font-size:13px;font-weight:700;color:${barColor}">${percent}%</span></div>`
+          h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="flex:1;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden"><div style="height:100%;width:${percent}%;background:${barColor};border-radius:3px"></div></div><span style="font-size:13px;font-weight:700;color:${barColor}">${percent}%</span></div>`
           h += `<div style="font-size:12px;color:rgba(255,255,255,0.5)">已到访 ${visited} / ${total} 个城市</div>`
         } else {
           h += `<div style="color:rgba(255,255,255,0.45)">点击进入查看城市</div>`
@@ -115,27 +173,33 @@ const updateOption = () => {
         return h
       }
     },
+    legend: {
+      show: markerSeries.length > 0,
+      bottom: 10,
+      left: 'center',
+      itemWidth: 12,
+      itemHeight: 12,
+      textStyle: { color: 'rgba(255,255,255,0.6)', fontSize: 11 },
+      data: markerSeries.map(s => ({ name: s.name, icon: 'circle' }))
+    },
     geo: {
       map: 'china', roam: true, zoom: 1.2, center: [104, 36],
       scaleLimit: { min: 0.8, max: 5 },
       left: 'center', top: 'center',
       itemStyle: { areaColor: 'rgba(51,65,85,0.6)', borderColor: 'rgba(148,163,184,0.2)', borderWidth: 1 },
       emphasis: {
-        itemStyle: {
-          areaColor: { type: 'linear', x: 0, y: 0, x2: 1, y2: 1, colorStops: [{ offset: 0, color: 'rgba(59,130,246,0.65)' }, { offset: 1, color: 'rgba(147,51,234,0.55)' }] },
-          borderColor: '#60a5fa', borderWidth: 2, shadowColor: 'rgba(96,165,250,0.4)', shadowBlur: 15
-        },
+        itemStyle: { areaColor: { type: 'linear', x: 0, y: 0, x2: 1, y2: 1, colorStops: [{ offset: 0, color: 'rgba(59,130,246,0.65)' }, { offset: 1, color: 'rgba(147,51,234,0.55)' }] }, borderColor: '#60a5fa', borderWidth: 2, shadowColor: 'rgba(96,165,250,0.4)', shadowBlur: 15 },
         label: { show: true, color: '#fff', fontSize: 13, fontWeight: 600 }
       },
       label: { show: false },
       select: { disabled: true },
       regions
     },
-    series: []
+    series: markerSeries
   }, true)
 }
 
-watch(cityRecords, () => { nextTick(updateOption) }, { deep: true })
+watch([cityRecords, cityMarkers], () => { nextTick(updateOption) }, { deep: true })
 
 let ro = null
 const handleResize = () => chart?.resize()
