@@ -9,7 +9,6 @@ const { cityRecords, cityMarkers, getProvinceProgress, getAllRoutes } = useTrave
 const chartRef = ref(null)
 let chart = null
 let geoData = null
-let cityCoords = {}
 
 const fullNameToShort = {
   '北京市': '北京', '天津市': '天津', '上海市': '上海', '重庆市': '重庆',
@@ -35,20 +34,42 @@ const MARKER_STYLES = {
   wish:     { color: '#ec4899', symbolSize: 16 }
 }
 
-const loadCoords = async () => {
-  try {
-    const resp = await fetch('/city-coords.json')
-    if (!resp.ok) { console.error('[ChinaMap] city-coords.json 加载失败'); return }
-    cityCoords = await resp.json()
-    console.log(`[ChinaMap] 城市坐标加载完成: ${Object.keys(cityCoords).length} 个城市`)
-  } catch (e) { console.error('[ChinaMap] 城市坐标加载失败:', e) }
-}
-
 const TRANSPORT_COLORS = {
   plane: '#38bdf8',
   train: '#fbbf24',
   car: '#4ade80',
   other: '#a78bfa'
+}
+
+const getGeoCoord = (cityName) => {
+  if (!chart) return null
+  try {
+    const model = chart.getModel()
+    const geo = model.getComponent('geo')
+    if (!geo) return null
+    const cs = geo.coordinateSystem
+    if (!cs) return null
+    const region = cs.getRegionByName?.(cityName)
+    if (region?.center) return region.center
+  } catch {}
+  try {
+    const features = geoData?.features || []
+    const f = features.find(feat => feat.properties?.name === cityName)
+    if (f) {
+      const center = f.properties.center || f.properties.centroid
+      if (center) return center
+      const coords = f.geometry?.type === 'Polygon'
+        ? f.geometry.coordinates[0]
+        : f.geometry?.type === 'MultiPolygon'
+          ? f.geometry.coordinates[0][0] : null
+      if (coords) {
+        const lngs = coords.map(c => c[0])
+        const lats = coords.map(c => c[1])
+        return [(Math.min(...lngs) + Math.max(...lngs)) / 2, (Math.min(...lats) + Math.max(...lats)) / 2]
+      }
+    }
+  } catch {}
+  return null
 }
 
 const buildAllSeries = () => {
@@ -57,18 +78,12 @@ const buildAllSeries = () => {
     const data = []
     for (const [cityName, types] of Object.entries(cityMarkers.value)) {
       if (!types.includes(markerType.key)) continue
-      const coord = cityCoords[cityName]
+      const coord = getGeoCoord(cityName)
       if (!coord) continue
-      data.push({
-        name: cityName,
-        value: [...coord, cityName],
-        markerType: markerType.key
-      })
+      data.push({ name: cityName, value: [...coord, cityName] })
     }
     if (data.length === 0) continue
-
     const style = MARKER_STYLES[markerType.key] || { color: '#fff', symbolSize: 16 }
-
     series.push({
       name: markerType.label,
       type: 'effectScatter',
@@ -78,28 +93,13 @@ const buildAllSeries = () => {
       showEffectOn: 'render',
       rippleEffect: { brushType: 'stroke', scale: 3, period: 4 },
       itemStyle: { color: style.color, shadowColor: style.color, shadowBlur: 8 },
-      label: {
-        show: true,
-        formatter: p => p.value[2],
-        position: 'right',
-        distance: 8,
-        fontSize: 11,
-        color: 'rgba(255,255,255,0.8)',
-        textShadowColor: 'rgba(0,0,0,0.6)',
-        textShadowBlur: 4
-      },
+      label: { show: true, formatter: p => p.value[2], position: 'right', distance: 8, fontSize: 11, color: 'rgba(255,255,255,0.8)', textShadowColor: 'rgba(0,0,0,0.6)', textShadowBlur: 4 },
       tooltip: {
-        backgroundColor: 'rgba(15,23,42,0.95)',
-        borderColor: 'rgba(96,165,250,0.3)',
-        borderWidth: 1,
-        padding: [10, 14],
-        textStyle: { color: '#e2e8f0', fontSize: 13 },
+        backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(96,165,250,0.3)', borderWidth: 1, padding: [10, 14], textStyle: { color: '#e2e8f0', fontSize: 13 },
         formatter: p => {
-          const city = p.value[2]
-          const types = cityMarkers.value[city] || []
+          const city = p.value[2], types = cityMarkers.value[city] || []
           const icons = types.map(t => MARKER_TYPES.find(m => m.key === t)).filter(Boolean)
-          return `<div style="font-weight:600;font-size:14px;margin-bottom:6px">${city}</div>` +
-            icons.map(m => `<div style="margin:2px 0">${m.icon} ${m.label}</div>`).join('')
+          return `<div style="font-weight:600;font-size:14px;margin-bottom:6px">${city}</div>` + icons.map(m => `<div style="margin:2px 0">${m.icon} ${m.label}</div>`).join('')
         }
       }
     })
@@ -107,15 +107,10 @@ const buildAllSeries = () => {
 
   const routes = getAllRoutes()
   const linesData = routes.map(r => {
-    const fromCoord = cityCoords[r.from]
-    const toCoord = cityCoords[r.to]
+    const fromCoord = getGeoCoord(r.from)
+    const toCoord = getGeoCoord(r.to)
     if (!fromCoord || !toCoord) return null
-    return {
-      coords: [fromCoord, toCoord],
-      transport: r.transport,
-      from: r.from,
-      to: r.to
-    }
+    return { coords: [fromCoord, toCoord], transport: r.transport, from: r.from, to: r.to }
   }).filter(Boolean)
 
   if (linesData.length > 0) {
@@ -126,42 +121,21 @@ const buildAllSeries = () => {
       zlevel: 1,
       data: linesData.map(d => ({
         coords: d.coords,
-        lineStyle: {
-          color: TRANSPORT_COLORS[d.transport] || TRANSPORT_COLORS.other,
-          opacity: 0.5,
-          width: 1.5,
-          curveness: 0.2
-        }
+        lineStyle: { color: TRANSPORT_COLORS[d.transport] || TRANSPORT_COLORS.other, opacity: 0.5, width: 1.5, curveness: 0.2 }
       })),
-      effect: {
-        show: true,
-        period: 4,
-        trailLength: 0.6,
-        symbol: 'circle',
-        symbolSize: 4,
-        color: '#fff'
-      },
-      lineStyle: {
-        curveness: 0.2,
-        opacity: 0.4
-      },
+      effect: { show: true, period: 4, trailLength: 0.6, symbol: 'circle', symbolSize: 4, color: '#fff' },
+      lineStyle: { curveness: 0.2, opacity: 0.4 },
       tooltip: {
-        backgroundColor: 'rgba(15,23,42,0.95)',
-        borderColor: 'rgba(96,165,250,0.3)',
-        borderWidth: 1,
-        padding: [10, 14],
-        textStyle: { color: '#e2e8f0', fontSize: 13 },
+        backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(96,165,250,0.3)', borderWidth: 1, padding: [10, 14], textStyle: { color: '#e2e8f0', fontSize: 13 },
         formatter: p => {
           const d = linesData[p.dataIndex]
           if (!d) return ''
-          const transportIcons = { plane: '✈️', train: '🚄', car: '🚗', other: '🗺️' }
-          return `<div style="font-weight:600;font-size:14px">${d.from} → ${d.to}</div>` +
-            `<div style="margin-top:4px">${transportIcons[d.transport] || '🗺️'} ${d.transport}</div>`
+          const icons = { plane: '✈️', train: '🚄', car: '🚗', other: '🗺️' }
+          return `<div style="font-weight:600;font-size:14px">${d.from} → ${d.to}</div><div style="margin-top:4px">${icons[d.transport] || '🗺️'} ${d.transport}</div>`
         }
       }
     })
   }
-
   return series
 }
 
@@ -177,7 +151,6 @@ const initChart = async () => {
   if (!chartRef.value) return
   chart = echarts.init(chartRef.value)
   try {
-    await loadCoords()
     console.log('[ChinaMap] 加载 /china.json')
     const resp = await fetch('/china.json')
     if (!resp.ok) throw new Error(`加载全国地图失败 (HTTP ${resp.status})`)
@@ -193,7 +166,6 @@ const initChart = async () => {
       }
     })
   } catch (e) { console.error('[ChinaMap] 内核失败:', e) }
-
   requestAnimationFrame(() => { chart?.resize(); requestAnimationFrame(() => chart?.resize()) })
 }
 
@@ -210,55 +182,43 @@ const updateOption = () => {
   })
 
   const markerSeries = buildAllSeries()
-  console.log(`[ChinaMap] 标记系列数: ${markerSeries.length}`)
+  console.log(`[ChinaMap] 系列数: ${markerSeries.length}`)
 
   chart.setOption({
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'item',
-      backgroundColor: 'rgba(15,23,42,0.95)',
-      borderColor: 'rgba(96,165,250,0.3)',
-      borderWidth: 1,
-      padding: [14, 18],
-      textStyle: { color: '#e2e8f0', fontSize: 14 },
+      backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(96,165,250,0.3)', borderWidth: 1, padding: [14, 18], textStyle: { color: '#e2e8f0', fontSize: 14 },
       formatter: p => {
-        if (p.seriesType === 'effectScatter') return p.tooltip?.formatter?.(p) || p.name
-        const name = p.name
-        const isSAR = !!SAR_PROVINCES[name]
-        const provinceName = SAR_PROVINCES[name] || name
+        if (p.seriesType === 'effectScatter' || p.seriesType === 'lines') {
+          const s = markerSeries.find(s => s.name === p.seriesName)
+          if (s?.tooltip?.formatter) return s.tooltip.formatter(p)
+          return p.name || ''
+        }
+        const name = p.name, isSAR = !!SAR_PROVINCES[name], provinceName = SAR_PROVINCES[name] || name
         const { visited, total, percent } = getProvinceProgress(provinceName)
         let h = `<div style="font-weight:600;font-size:15px;margin-bottom:6px">${name}${isSAR ? ' <span style="font-size:11px;color:#a855f7;background:rgba(168,85,247,0.15);padding:1px 6px;border-radius:4px">属广东</span>' : ''}</div>`
         if (total > 0) {
           const barColor = percent === 0 ? '#475569' : percent <= 20 ? '#38bdf8' : percent <= 50 ? '#38bdf8' : percent <= 80 ? '#fbbf24' : '#ef4444'
           h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="flex:1;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden"><div style="height:100%;width:${percent}%;background:${barColor};border-radius:3px"></div></div><span style="font-size:13px;font-weight:700;color:${barColor}">${percent}%</span></div>`
           h += `<div style="font-size:12px;color:rgba(255,255,255,0.5)">已到访 ${visited} / ${total} 个城市</div>`
-        } else {
-          h += `<div style="color:rgba(255,255,255,0.45)">点击进入查看城市</div>`
-        }
+        } else { h += `<div style="color:rgba(255,255,255,0.45)">点击进入查看城市</div>` }
         return h
       }
     },
     legend: {
-      show: markerSeries.length > 0,
-      bottom: 10,
-      left: 'center',
-      itemWidth: 12,
-      itemHeight: 12,
+      show: markerSeries.length > 0, bottom: 10, left: 'center', itemWidth: 12, itemHeight: 12,
       textStyle: { color: 'rgba(255,255,255,0.6)', fontSize: 11 },
       data: markerSeries.map(s => ({ name: s.name, icon: 'circle' }))
     },
     geo: {
-      map: 'china', roam: true, zoom: 1.2, center: [104, 36],
-      scaleLimit: { min: 0.8, max: 5 },
-      left: 'center', top: 'center',
+      map: 'china', roam: true, zoom: 1.2, center: [104, 36], scaleLimit: { min: 0.8, max: 5 }, left: 'center', top: 'center',
       itemStyle: { areaColor: 'rgba(51,65,85,0.6)', borderColor: 'rgba(148,163,184,0.2)', borderWidth: 1 },
       emphasis: {
         itemStyle: { areaColor: { type: 'linear', x: 0, y: 0, x2: 1, y2: 1, colorStops: [{ offset: 0, color: 'rgba(59,130,246,0.65)' }, { offset: 1, color: 'rgba(147,51,234,0.55)' }] }, borderColor: '#60a5fa', borderWidth: 2, shadowColor: 'rgba(96,165,250,0.4)', shadowBlur: 15 },
         label: { show: true, color: '#fff', fontSize: 13, fontWeight: 600 }
       },
-      label: { show: false },
-      select: { disabled: true },
-      regions
+      label: { show: false }, select: { disabled: true }, regions
     },
     series: markerSeries
   }, true)
@@ -296,17 +256,8 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.map-wrapper {
-  background: rgba(255,255,255,0.03);
-  border-radius: 20px;
-  border: 1px solid rgba(255,255,255,0.08);
-  padding: 20px 24px 16px;
-  position: relative;
-}
-.map-wrapper::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(96,165,250,0.3), transparent);
-}
+.map-wrapper { background: rgba(255,255,255,0.03); border-radius: 20px; border: 1px solid rgba(255,255,255,0.08); padding: 20px 24px 16px; position: relative; }
+.map-wrapper::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(96,165,250,0.3), transparent); }
 .map-container { width: 100%; height: 68vh; min-height: 480px; }
 .map-legend { display: flex; justify-content: center; gap: 18px; margin-top: 10px; flex-wrap: wrap; }
 .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: rgba(255,255,255,0.45); }
@@ -317,9 +268,5 @@ onUnmounted(() => {
 .dot.gold { background: linear-gradient(135deg, rgba(234,179,8,0.55), rgba(249,115,22,0.45)); border: 1px solid #fbbf24; }
 .dot.red { background: linear-gradient(135deg, rgba(239,68,68,0.6), rgba(234,179,8,0.55)); border: 1px solid #ef4444; }
 .map-hint { text-align: center; margin-top: 8px; font-size: 12px; color: rgba(255,255,255,0.25); }
-@media (max-width: 768px) {
-  .map-wrapper { padding: 12px; }
-  .map-container { height: 52vh; min-height: 300px; }
-  .map-legend { gap: 12px; }
-}
+@media (max-width: 768px) { .map-wrapper { padding: 12px; } .map-container { height: 52vh; min-height: 300px; } .map-legend { gap: 12px; } }
 </style>
