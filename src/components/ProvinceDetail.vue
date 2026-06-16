@@ -352,7 +352,7 @@ onUnmounted(() => {
             <p>⚠️ {{ error }}</p>
             <button @click="initChart">重试</button>
           </div>
-          <div class="chart" ref="chartRef" :style="{ display: isLoading || error ? 'none' : 'block' }"></div>
+          <div class="chart" ref="chartRef"></div>
         </div>
 
         <div class="legend">
@@ -446,10 +446,10 @@ onUnmounted(() => {
 .map-card { background: rgba(255,255,255,0.03); border-radius: 18px; border: 1px solid rgba(255,255,255,0.07); padding: 4px; position: relative; overflow: hidden; min-height: 460px; }
 .map-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(96,165,250,0.25), transparent); z-index: 1; }
 .chart { width: 100%; height: 70vh; min-height: 460px; }
-.loading { display: flex; align-items: center; justify-content: center; height: 460px; }
+.loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(15,23,42,0.9); z-index: 10; border-radius: 14px; }
 .spinner { width: 36px; height: 36px; border: 3px solid rgba(96,165,250,0.2); border-top-color: #60a5fa; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.err { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 460px; color: rgba(255,255,255,0.5); }
+.err { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15,23,42,0.9); z-index: 10; border-radius: 14px; color: rgba(255,255,255,0.5); }
 .err button { margin-top: 10px; padding: 7px 18px; background: linear-gradient(135deg,#3b82f6,#8b5cf6); border: none; border-radius: 8px; color: #fff; cursor: pointer; font-size: 13px; }
 
 .legend { display: flex; justify-content: center; gap: 14px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 10px; flex-wrap: wrap; }
