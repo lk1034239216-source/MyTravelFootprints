@@ -18,11 +18,13 @@ watch(companions, v => saveLocal('travel_companions', v), { deep: true })
 watch(cityMarkers, v => saveLocal('travel_markers', v), { deep: true })
 
 export function useTravelData() {
-  const loadFromDB = async () => {
+  const loadFromDB = async (userId) => {
+    if (!userId) { cityRecords.value = {}; isLoaded.value = true; return }
     try {
       const { data, error } = await supabase
         .from(TABLE)
         .select('*')
+        .eq('user_id', userId)
         .order('visit_date', { ascending: false })
       if (error) throw error
 
@@ -51,16 +53,12 @@ export function useTravelData() {
   const uploadImages = async (files) => {
     const urls = []
     for (const file of files) {
-      if (file.url && file.url.startsWith('http')) {
-        urls.push(file.url)
-        continue
-      }
+      if (file.url && file.url.startsWith('http')) { urls.push(file.url); continue }
       const ext = file.name?.split('.').pop() || 'jpg'
       const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
       const blob = file instanceof Blob ? file : await fetch(file.url).then(r => r.blob())
       const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
-        contentType: blob.type || 'image/jpeg',
-        upsert: false
+        contentType: blob.type || 'image/jpeg', upsert: false
       })
       if (error) { console.error('[Storage] 上传失败:', error); continue }
       const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(path)
@@ -69,16 +67,15 @@ export function useTravelData() {
     return urls
   }
 
-  const addRecord = async (cityName, record) => {
+  const addRecord = async (userId, cityName, record) => {
     try {
       let imageUrls = []
-      if (record.images?.length) {
-        imageUrls = await uploadImages(record.images)
-      }
+      if (record.images?.length) imageUrls = await uploadImages(record.images)
 
       const { data, error } = await supabase
         .from(TABLE)
         .insert({
+          user_id: userId,
           city_name: cityName,
           visit_date: record.date,
           thoughts: record.thoughts || '',
@@ -90,32 +87,24 @@ export function useTravelData() {
       if (error) throw error
 
       const newRecord = {
-        id: data.id,
-        date: data.visit_date,
-        thoughts: data.thoughts,
+        id: data.id, date: data.visit_date, thoughts: data.thoughts,
         images: imageUrls.map((url, i) => ({ id: `${data.id}_${i}`, url, name: '' })),
-        companions: data.companions || [],
-        createdAt: data.created_at
+        companions: data.companions || [], createdAt: data.created_at
       }
-
       if (!cityRecords.value[cityName]) cityRecords.value[cityName] = []
       cityRecords.value[cityName].unshift(newRecord)
-      console.log(`[Supabase] 新增记录: ${cityName}`)
       return newRecord
-    } catch (e) {
-      console.error('[Supabase] 新增失败:', e)
-      throw e
-    }
+    } catch (e) { console.error('[Supabase] 新增失败:', e); throw e }
   }
 
   const updateRecord = async (cityName, recordId, data) => {
     try {
       let imageUrls = undefined
       if (data.images !== undefined) {
-        const newImages = data.images.filter(img => img.url && img.url.startsWith('http'))
+        const existing = data.images.filter(img => img.url?.startsWith('http')).map(img => img.url)
         const toUpload = data.images.filter(img => !img.url?.startsWith('http'))
         const uploaded = toUpload.length ? await uploadImages(toUpload) : []
-        imageUrls = [...newImages.map(img => img.url), ...uploaded]
+        imageUrls = [...existing, ...uploaded]
       }
 
       const updateData = {}
@@ -138,29 +127,20 @@ export function useTravelData() {
           if (data.companions) records[idx].companions = data.companions
         }
       }
-      console.log(`[Supabase] 更新记录: ${recordId}`)
-    } catch (e) {
-      console.error('[Supabase] 更新失败:', e)
-      throw e
-    }
+    } catch (e) { console.error('[Supabase] 更新失败:', e); throw e }
   }
 
   const deleteRecord = async (cityName, recordId) => {
     try {
       const { error } = await supabase.from(TABLE).delete().eq('id', recordId)
       if (error) throw error
-
       const records = cityRecords.value[cityName]
       if (records) {
         const idx = records.findIndex(r => r.id === recordId)
         if (idx !== -1) records.splice(idx, 1)
         if (records.length === 0) delete cityRecords.value[cityName]
       }
-      console.log(`[Supabase] 删除记录: ${recordId}`)
-    } catch (e) {
-      console.error('[Supabase] 删除失败:', e)
-      throw e
-    }
+    } catch (e) { console.error('[Supabase] 删除失败:', e); throw e }
   }
 
   const getRecords = (cityName) => cityRecords.value[cityName] || []
@@ -178,8 +158,7 @@ export function useTravelData() {
   const addCompanion = (name) => {
     const trimmed = name.trim()
     if (!trimmed || companions.value.includes(trimmed)) return false
-    companions.value.push(trimmed)
-    return true
+    companions.value.push(trimmed); return true
   }
   const removeCompanion = (name) => {
     const idx = companions.value.indexOf(name)
@@ -206,9 +185,14 @@ export function useTravelData() {
     return { visited, total: cities.length, percent: Math.round((visited / cities.length) * 100) }
   }
 
+  const clearLocal = () => {
+    cityRecords.value = {}
+    isLoaded.value = false
+  }
+
   return {
     cityRecords, companions, cityMarkers, isLoaded,
-    loadFromDB,
+    loadFromDB, clearLocal,
     getRecords, getVisitCount, isVisited,
     addRecord, updateRecord, deleteRecord,
     getSortedRecords, getAllStats,

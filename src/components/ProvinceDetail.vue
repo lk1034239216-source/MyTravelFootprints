@@ -4,12 +4,14 @@ import * as echarts from 'echarts'
 import { provinceConfig } from '../config/provinces.js'
 import { provinceCities } from '../config/cityMap.js'
 import { useTravelData, MARKER_TYPES } from '../composables/useTravelData.js'
+import { useAuth } from '../composables/useAuth.js'
 import RecordForm from './RecordForm.vue'
 import FootprintGallery from './FootprintGallery.vue'
 
 const props = defineProps({ provinceName: { type: String, required: true } })
 const emit = defineEmits(['back'])
 
+const { user } = useAuth()
 const { getVisitCount, isVisited, addRecord, updateRecord, getSortedRecords, cityRecords, getRecords, getMarkers, hasMarker, toggleMarker, getMarkerIcons } = useTravelData()
 
 const chartRef = ref(null)
@@ -287,11 +289,15 @@ const handleCityClick = (cityName) => {
   else { showGallery.value = true }
 }
 
-const handleSave = (cityName, data) => {
-  if (editingRecord.value) updateRecord(cityName, editingRecord.value.id, data)
-  else addRecord(cityName, data)
-  showForm.value = false; editingRecord.value = null; isAddingNew.value = false
-  nextTick(() => { instance?.setOption(buildOption(currentMapName())) })
+const handleSave = async (cityName, data) => {
+  try {
+    if (editingRecord.value) await updateRecord(cityName, editingRecord.value.id, data)
+    else await addRecord(user.value.id, cityName, data)
+    showForm.value = false; editingRecord.value = null; isAddingNew.value = false
+    nextTick(() => { instance?.setOption(buildOption(currentMapName())) })
+  } catch (e) {
+    console.error('保存失败:', e)
+  }
 }
 
 const currentMapName = () => {
