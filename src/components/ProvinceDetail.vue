@@ -52,7 +52,8 @@ const breadcrumb = computed(() => {
 const recentRecords = computed(() => {
   const all = []
   for (const city of displayCities.value) {
-    getRecords(city).forEach((rec, idx) => { all.push({ ...rec, cityName: city, seq: idx + 1 }) })
+    const sorted = [...getRecords(city)].sort((a, b) => new Date(a.date) - new Date(b.date))
+    sorted.forEach((rec, idx) => { all.push({ ...rec, cityName: city, seq: idx + 1 }) })
   }
   return all.sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 30)
 })
