@@ -79,20 +79,34 @@ const fetchGeo = async (adcode) => {
   if (geoCache[key]) return geoCache[key]
 
   if (key === '710000') {
+    console.log('[fetchGeo] 台湾省: 从本地 china.json 提取')
     const chinaResp = await fetch('/china.json')
-    if (!chinaResp.ok) throw new Error('加载全国地图数据失败')
+    if (!chinaResp.ok) {
+      console.error('[fetchGeo] china.json 加载失败, status:', chinaResp.status)
+      throw new Error(`加载全国地图失败 (HTTP ${chinaResp.status})`)
+    }
     const chinaGeo = await chinaResp.json()
     const taiwanFeature = chinaGeo.features.find(f => f.properties.name === '台湾省')
-    if (!taiwanFeature) throw new Error('未找到台湾省数据')
+    if (!taiwanFeature) {
+      console.error('[fetchGeo] china.json 中未找到台湾省 feature')
+      throw new Error('未找到台湾省数据')
+    }
     const taiwanGeo = { type: 'FeatureCollection', features: [taiwanFeature] }
     geoCache[key] = taiwanGeo
     return taiwanGeo
   }
 
-  const resp = await fetch(`https://geo.datav.aliyun.com/areas_v3/bound/${key}_full.json`)
-  if (!resp.ok) throw new Error(`加载地图 ${adcode} 失败`)
-  geoCache[key] = await resp.json()
-  return geoCache[key]
+  const url = `https://geo.datav.aliyun.com/areas_v3/bound/${key}_full.json`
+  console.log(`[fetchGeo] 请求: ${url}`)
+  const resp = await fetch(url)
+  if (!resp.ok) {
+    console.error(`[fetchGeo] 失败: HTTP ${resp.status} for adcode=${key}`)
+    throw new Error(`加载地图 ${adcode} 失败 (HTTP ${resp.status})`)
+  }
+  const geo = await resp.json()
+  console.log(`[fetchGeo] 成功: adcode=${key}, features=${geo.features?.length || 0}`)
+  geoCache[key] = geo
+  return geo
 }
 
 const visitColor = (count) => {
@@ -181,9 +195,12 @@ const buildOption = (mapName) => {
 }
 
 const switchMap = async (mapName, geo) => {
-  if (!instance) return
+  if (!instance) {
+    console.error('[switchMap] instance 不存在')
+    return
+  }
   try {
-    console.log(`[switchMap] → ${mapName}`)
+    console.log(`[switchMap] → ${mapName}, features=${geo.features?.length}`)
     instance.clear()
     echarts.registerMap(mapName, geo)
     displayCities.value = geo.features.map(f => f.properties.name)
@@ -198,18 +215,23 @@ const switchMap = async (mapName, geo) => {
       }
     })
     requestAnimationFrame(() => { instance?.resize(); requestAnimationFrame(() => instance?.resize()) })
-    console.log(`[switchMap] ✓ ${mapName}, cities: ${displayCities.value.length}`)
+    console.log(`[switchMap] ✓ ${mapName}, cities=${displayCities.value.length}`)
   } catch (e) {
-    console.error('[switchMap] 失败:', e)
+    console.error('[switchMap] 内核失败:', e)
     error.value = e.message
   }
 }
 
 const initChart = async () => {
-  if (!chartRef.value || !config.value) return
-  isLoading.value = true; error.value = null
+  if (!chartRef.value || !config.value) {
+    console.warn('[initChart] chartRef 或 config 不存在', { hasRef: !!chartRef.value, hasConfig: !!config.value })
+    return
+  }
+  isLoading.value = true
+  error.value = null
 
   try {
+    console.log(`[initChart] 开始: province=${props.provinceName}, adcode=${config.value.adcode}`)
     instance = echarts.init(chartRef.value)
     const geo = await fetchGeo(config.value.adcode)
 
@@ -226,8 +248,9 @@ const initChart = async () => {
       drillName.value = ''
       await switchMap(`province_${props.provinceName}`, geo)
     }
+    console.log(`[initChart] ✓ 完成: province=${props.provinceName}`)
   } catch (e) {
-    console.error('[initChart] 失败:', e)
+    console.error('[initChart] 内核失败:', e)
     error.value = e.message
   } finally {
     isLoading.value = false
@@ -239,12 +262,13 @@ const drillIntoSAR = async (sarName) => {
   if (!sarConfig) return
   try {
     isLoading.value = true
+    console.log(`[drillIntoSAR] → ${sarName}, adcode=${sarConfig.adcode}`)
     const geo = await fetchGeo(sarConfig.adcode)
     drillLevel.value = 'sar'
     drillName.value = sarName
     await switchMap(`sar_${sarConfig.adcode}`, geo)
   } catch (e) {
-    console.error('[drillIntoSAR] 失败:', e)
+    console.error('[drillIntoSAR] 内核失败:', e)
     error.value = e.message
   } finally {
     isLoading.value = false
@@ -255,6 +279,7 @@ const backToProvince = async () => {
   if (drillLevel.value === 'province') return
   try {
     isLoading.value = true
+    console.log(`[backToProvince] 返回省级视图: ${props.provinceName}`)
     const geo = await fetchGeo(config.value.adcode)
 
     if (isGuangdong.value) {
@@ -271,7 +296,7 @@ const backToProvince = async () => {
       await switchMap(`province_${props.provinceName}_back`, geo)
     }
   } catch (e) {
-    console.error('[backToProvince] 失败:', e)
+    console.error('[backToProvince] 内核失败:', e)
     error.value = e.message
   } finally {
     isLoading.value = false
@@ -296,7 +321,7 @@ const handleSave = async (cityName, data) => {
     showForm.value = false; editingRecord.value = null; isAddingNew.value = false
     nextTick(() => { instance?.setOption(buildOption(currentMapName())) })
   } catch (e) {
-    console.error('保存失败:', e)
+    console.error('[handleSave] 保存失败:', e)
   }
 }
 
@@ -518,7 +543,6 @@ onUnmounted(() => {
   .col-right { max-height: none; }
   .chart { height: 55vh; min-height: 320px; }
   .map-card { min-height: 320px; }
-  .loading, .err { height: 320px; }
 }
 @media (max-width: 768px) {
   .breadcrumb { gap: 6px; }
@@ -526,7 +550,6 @@ onUnmounted(() => {
   .bc-current { font-size: 18px; }
   .map-card { padding: 4px; min-height: 280px; }
   .chart { height: 48vh; min-height: 280px; }
-  .loading, .err { height: 280px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); }
 }
 </style>

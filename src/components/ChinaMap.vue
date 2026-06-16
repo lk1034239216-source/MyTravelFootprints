@@ -35,11 +35,20 @@ const percentColor = (pct) => {
 }
 
 const initChart = async () => {
-  if (!chartRef.value) return
+  if (!chartRef.value) {
+    console.error('[ChinaMap] chartRef 不存在')
+    return
+  }
   chart = echarts.init(chartRef.value)
   try {
+    console.log('[ChinaMap] 加载 /china.json')
     const resp = await fetch('/china.json')
+    if (!resp.ok) {
+      console.error('[ChinaMap] china.json 加载失败, status:', resp.status)
+      throw new Error(`加载全国地图失败 (HTTP ${resp.status})`)
+    }
     geoData = await resp.json()
+    console.log(`[ChinaMap] 加载成功, features=${geoData.features?.length}`)
     geoData.features.forEach(f => { f.properties.name = fullNameToShort[f.properties.name] || f.properties.name })
     echarts.registerMap('china', geoData)
     updateOption()
@@ -49,7 +58,9 @@ const initChart = async () => {
         emit('province-click', target)
       }
     })
-  } catch (e) { console.error(e) }
+  } catch (e) {
+    console.error('[ChinaMap] 内核失败:', e)
+  }
 
   requestAnimationFrame(() => {
     chart?.resize()
@@ -90,8 +101,7 @@ const updateOption = () => {
         const isSAR = !!SAR_PROVINCES[name]
         const provinceName = SAR_PROVINCES[name] || name
         const { visited, total, percent } = getProvinceProgress(provinceName)
-        const displayName = isSAR ? name : name
-        let h = `<div style="font-weight:600;font-size:15px;margin-bottom:6px">${displayName}${isSAR ? ' <span style="font-size:11px;color:#a855f7;background:rgba(168,85,247,0.15);padding:1px 6px;border-radius:4px">属广东</span>' : ''}</div>`
+        let h = `<div style="font-weight:600;font-size:15px;margin-bottom:6px">${name}${isSAR ? ' <span style="font-size:11px;color:#a855f7;background:rgba(168,85,247,0.15);padding:1px 6px;border-radius:4px">属广东</span>' : ''}</div>`
         if (total > 0) {
           const barColor = percent === 0 ? '#475569' : percent <= 20 ? '#38bdf8' : percent <= 50 ? '#38bdf8' : percent <= 80 ? '#fbbf24' : '#ef4444'
           h += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">`
