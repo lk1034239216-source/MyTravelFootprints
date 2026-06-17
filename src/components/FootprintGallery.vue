@@ -26,6 +26,23 @@ const fmtDate = (d) => {
 
 const gridCls = (n) => n === 1 ? 'g1' : n === 2 ? 'g2' : n === 4 ? 'g4' : 'gn'
 
+const totalSteps = (rec) => (rec.dailySteps || []).reduce((s, v) => s + (Number(v) || 0), 0)
+const avgSteps = (rec) => {
+  const days = rec.dailySteps?.length || 1
+  return Math.round(totalSteps(rec) / days)
+}
+const maxSteps = (rec) => Math.max(...(rec.dailySteps || [0]))
+const barHeight = (steps, rec) => {
+  const max = maxSteps(rec)
+  return max > 0 ? Math.max(8, (steps / max) * 100) : 8
+}
+const isHardcore = (rec) => {
+  const steps = rec.dailySteps || []
+  const hasBigDay = steps.some(s => Number(s) >= 30000)
+  const avg = avgSteps(rec)
+  return hasBigDay || avg >= 25000
+}
+
 onMounted(() => { requestAnimationFrame(() => { visible.value = true }) })
 const close = () => { visible.value = false; setTimeout(() => emit('close'), 300) }
 const overlayClick = e => { if (e.target === e.currentTarget) close() }
@@ -91,6 +108,48 @@ const doDelete = () => {
                   <div class="thoughts-box">
                     <span class="q">"</span>
                     <p>{{ rec.thoughts }}</p>
+                  </div>
+                </div>
+
+                <div v-if="rec.durationDays > 0 && rec.dailySteps?.length" class="card-steps">
+                  <div class="steps-header">
+                    <div class="steps-medal" :class="{ hardcore: isHardcore(rec) }">
+                      {{ isHardcore(rec) ? '🔥 硬核特种兵 · 暴走特权' : '🚶 城市漫步者' }}
+                    </div>
+                  </div>
+                  <div class="steps-stats">
+                    <div class="stat-box">
+                      <span class="stat-val">{{ rec.durationDays }}</span>
+                      <span class="stat-label">暴走天数</span>
+                    </div>
+                    <div class="stat-box">
+                      <span class="stat-val">{{ totalSteps(rec).toLocaleString() }}</span>
+                      <span class="stat-label">总步数</span>
+                    </div>
+                    <div class="stat-box">
+                      <span class="stat-val">{{ avgSteps(rec).toLocaleString() }}</span>
+                      <span class="stat-label">日均步数</span>
+                    </div>
+                  </div>
+                  <div class="mini-chart">
+                    <div class="chart-labels">
+                      <span v-for="(_, i) in rec.dailySteps" :key="i">{{ i + 1 }}天</span>
+                    </div>
+                    <div class="chart-bars">
+                      <div
+                        v-for="(steps, i) in rec.dailySteps"
+                        :key="i"
+                        class="bar-wrapper"
+                      >
+                        <div
+                          class="bar"
+                          :class="{ peak: steps === maxSteps(rec) }"
+                          :style="{ height: barHeight(steps, rec) + '%' }"
+                        >
+                          <span class="bar-val" v-if="steps >= 10000">{{ (steps / 10000).toFixed(1) }}w</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -174,6 +233,24 @@ h2 { font-size: 30px; font-weight: 700; background: linear-gradient(135deg,#60a5
 .thoughts-box { position: relative; padding: 10px 14px; background: rgba(255,255,255,0.02); border-radius: 10px; border-left: 3px solid rgba(96,165,250,0.35); }
 .q { font-size: 32px; line-height: 1; color: rgba(96,165,250,0.2); font-family: Georgia, serif; position: absolute; top: 2px; left: 6px; }
 .thoughts-box p { font-size: 13px; line-height: 1.7; color: rgba(255,255,255,0.75); margin: 0; padding-left: 20px; text-align: justify; }
+
+.card-steps { margin-top: 12px; background: rgba(15,23,42,0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 14px; }
+.steps-header { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.steps-medal { font-size: 11px; padding: 4px 10px; border-radius: 20px; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.08); }
+.steps-medal.hardcore { background: linear-gradient(135deg, rgba(251,191,36,0.2), rgba(239,68,68,0.2)); color: #fbbf24; border-color: rgba(251,191,36,0.4); font-weight: 700; text-shadow: 0 0 8px rgba(251,191,36,0.3); }
+.steps-stats { display: flex; gap: 8px; margin-bottom: 14px; }
+.stat-box { flex: 1; text-align: center; padding: 10px 6px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.04); }
+.stat-val { display: block; font-size: 18px; font-weight: 700; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; line-height: 1.2; }
+.stat-label { display: block; font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+.mini-chart { }
+.chart-labels { display: flex; justify-content: space-around; margin-bottom: 4px; }
+.chart-labels span { font-size: 10px; color: rgba(255,255,255,0.3); text-align: center; flex: 1; }
+.chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 64px; padding: 0 2px; }
+.bar-wrapper { flex: 1; display: flex; align-items: flex-end; justify-content: center; height: 100%; }
+.bar { width: 100%; max-width: 32px; background: linear-gradient(180deg, #3b82f6, #1d4ed8); border-radius: 4px 4px 0 0; transition: height 0.3s; position: relative; min-height: 4px; }
+.bar.peak { background: linear-gradient(180deg, #fbbf24, #f59e0b); }
+.bar-val { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 9px; color: rgba(255,255,255,0.5); white-space: nowrap; }
+
 .foot { padding: 14px 24px 20px; border-top: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
 .btn { width: 100%; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
 .close-btn { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.75); border: 1px solid rgba(255,255,255,0.1); }
