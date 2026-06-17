@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useTravelData } from '../composables/useTravelData.js'
 
 const props = defineProps({
@@ -19,7 +19,15 @@ const form = ref({
   images: props.record?.images ? [...props.record.images] : [],
   companions: props.record?.companions ? [...props.record.companions] : [],
   fromCity: props.record?.fromCity || '',
-  transportType: props.record?.transportType || ''
+  transportType: props.record?.transportType || '',
+  durationDays: props.record?.durationDays || 0,
+  dailySteps: props.record?.dailySteps ? [...props.record.dailySteps] : []
+})
+
+watch(() => form.value.durationDays, (newVal) => {
+  const days = Math.max(0, Math.min(30, Number(newVal) || 0))
+  while (form.value.dailySteps.length < days) form.value.dailySteps.push(0)
+  form.value.dailySteps.length = days
 })
 
 const MAX = 9
@@ -98,7 +106,9 @@ const save = () => {
     images: form.value.images,
     companions: form.value.companions,
     fromCity: form.value.fromCity,
-    transportType: form.value.transportType
+    transportType: form.value.transportType,
+    durationDays: Number(form.value.durationDays) || 0,
+    dailySteps: form.value.dailySteps.map(Number)
   })
 }
 
@@ -199,6 +209,38 @@ const handleRemoveCompanion = (name) => {
           </div>
 
           <div class="field">
+            <label>⏱️ 旅行天数 <span class="optional">（可选）</span></label>
+            <input
+              type="number"
+              v-model.number="form.durationDays"
+              min="0"
+              max="30"
+              placeholder="0"
+              class="steps-input"
+            />
+          </div>
+
+          <div v-if="form.durationDays > 0" class="field">
+            <label>🏃 每日步数</label>
+            <div class="steps-grid">
+              <div v-for="(_, i) in form.dailySteps" :key="i" class="steps-row">
+                <span class="steps-day">第 {{ i + 1 }} 天</span>
+                <input
+                  type="number"
+                  v-model.number="form.dailySteps[i]"
+                  min="0"
+                  placeholder="步数"
+                  class="steps-value"
+                />
+                <span class="steps-unit">步</span>
+              </div>
+            </div>
+            <p class="steps-total" v-if="form.dailySteps.length > 0">
+              合计 <b>{{ form.dailySteps.reduce((s, v) => s + (Number(v) || 0), 0).toLocaleString() }}</b> 步
+            </p>
+          </div>
+
+          <div class="field">
             <label>
               👥 同行人
               <span class="companion-count" v-if="form.companions.length">{{ form.companions.length }} 人</span>
@@ -295,6 +337,17 @@ textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
 .t-icon { font-size: 24px; }
 .t-label { font-size: 12px; color: rgba(255,255,255,0.6); }
 .transport-item.active .t-label { color: #60a5fa; }
+
+.steps-input { width: 100%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 10px 14px; color: #e2e8f0; font-size: 14px; box-sizing: border-box; }
+.steps-input:focus { outline: none; border-color: rgba(96,165,250,0.5); box-shadow: 0 0 0 3px rgba(96,165,250,0.08); }
+.steps-grid { display: flex; flex-direction: column; gap: 8px; }
+.steps-row { display: flex; align-items: center; gap: 10px; }
+.steps-day { font-size: 13px; color: rgba(255,255,255,0.6); min-width: 60px; text-align: right; }
+.steps-value { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 12px; color: #e2e8f0; font-size: 14px; box-sizing: border-box; }
+.steps-value:focus { outline: none; border-color: rgba(96,165,250,0.5); }
+.steps-unit { font-size: 12px; color: rgba(255,255,255,0.4); min-width: 24px; }
+.steps-total { margin-top: 10px; font-size: 13px; color: rgba(255,255,255,0.5); text-align: right; }
+.steps-total b { color: #fbbf24; }
 
 .img-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .img-cell { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: rgba(255,255,255,0.05); }

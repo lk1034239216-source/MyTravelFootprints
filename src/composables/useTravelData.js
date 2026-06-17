@@ -40,6 +40,8 @@ export function useTravelData() {
           companions: row.companions || [],
           fromCity: row.from_city || '',
           transportType: row.transport_type || '',
+          durationDays: row.duration_days || 0,
+          dailySteps: row.daily_steps || [],
           createdAt: row.created_at
         })
       }
@@ -84,7 +86,9 @@ export function useTravelData() {
           images: imageUrls,
           companions: record.companions || [],
           from_city: record.fromCity || '',
-          transport_type: record.transportType || ''
+          transport_type: record.transportType || '',
+          duration_days: record.durationDays || 0,
+          daily_steps: record.dailySteps || []
         })
         .select()
         .single()
@@ -96,6 +100,8 @@ export function useTravelData() {
         companions: data.companions || [],
         fromCity: data.from_city || '',
         transportType: data.transport_type || '',
+        durationDays: data.duration_days || 0,
+        dailySteps: data.daily_steps || [],
         createdAt: data.created_at
       }
       if (!cityRecords.value[cityName]) cityRecords.value[cityName] = []
@@ -121,6 +127,8 @@ export function useTravelData() {
       if (data.companions !== undefined) updateData.companions = data.companions
       if (data.fromCity !== undefined) updateData.from_city = data.fromCity
       if (data.transportType !== undefined) updateData.transport_type = data.transportType
+      if (data.durationDays !== undefined) updateData.duration_days = data.durationDays
+      if (data.dailySteps !== undefined) updateData.daily_steps = data.dailySteps
       updateData.updated_at = new Date().toISOString()
 
       const { error } = await supabase.from(TABLE).update(updateData).eq('id', recordId)
@@ -136,6 +144,8 @@ export function useTravelData() {
           if (data.companions) records[idx].companions = data.companions
           if (data.fromCity !== undefined) records[idx].fromCity = data.fromCity
           if (data.transportType !== undefined) records[idx].transportType = data.transportType
+          if (data.durationDays !== undefined) records[idx].durationDays = data.durationDays
+          if (data.dailySteps !== undefined) records[idx].dailySteps = data.dailySteps
         }
       }
     } catch (e) { console.error('[Supabase] 更新失败:', e); throw e }
