@@ -43,6 +43,28 @@ const TRANSPORT_COLORS = {
   other: '#a78bfa'
 }
 
+const MUNICIPALITY_MAP = {
+  '东城区':'北京','西城区':'北京','朝阳区':'北京','丰台区':'北京','石景山区':'北京','海淀区':'北京',
+  '门头沟区':'北京','房山区':'北京','通州区':'北京','顺义区':'北京','昌平区':'北京','大兴区':'北京',
+  '怀柔区':'北京','平谷区':'北京','密云区':'北京','延庆区':'北京',
+  '和平区':'天津','河东区':'天津','河西区':'天津','南开区':'天津','河北区':'天津','红桥区':'天津',
+  '东丽区':'天津','西青区':'天津','津南区':'天津','北辰区':'天津','武清区':'天津','宝坻区':'天津',
+  '滨海新区':'天津','宁河区':'天津','静海区':'天津','蓟州区':'天津',
+  '黄浦区':'上海','徐汇区':'上海','长宁区':'上海','静安区':'上海','普陀区':'上海','虹口区':'上海',
+  '杨浦区':'上海','闵行区':'上海','宝山区':'上海','嘉定区':'上海','浦东新区':'上海','金山区':'上海',
+  '松江区':'上海','青浦区':'上海','奉贤区':'上海','崇明区':'上海',
+  '万州区':'重庆','涪陵区':'重庆','渝中区':'重庆','大渡口区':'重庆','江北区':'重庆','沙坪坝区':'重庆',
+  '九龙坡区':'重庆','南岸区':'重庆','北碚区':'重庆','綦江区':'重庆','大足区':'重庆','渝北区':'重庆',
+  '巴南区':'重庆','黔江区':'重庆','长寿区':'重庆','江津区':'重庆','合川区':'重庆','永川区':'重庆',
+  '南川区':'重庆','璧山区':'重庆','铜梁区':'重庆','潼南区':'重庆','荣昌区':'重庆','开州区':'重庆',
+  '梁平区':'重庆','武隆区':'重庆','城口县':'重庆','丰都县':'重庆','垫江县':'重庆','忠县':'重庆',
+  '云阳县':'重庆','奉节县':'重庆','巫山县':'重庆','巫溪县':'重庆',
+  '石柱土家族自治县':'重庆','秀山土家族苗族自治县':'重庆','酉阳土家族苗族自治县':'重庆','彭水苗族土家族自治县':'重庆',
+  '香港特别行政区':'香港','澳门特别行政区':'澳门'
+}
+
+const normalizeCityName = (name) => MUNICIPALITY_MAP[name] || name
+
 const loadCoords = async () => {
   try {
     const resp = await fetch('/city-coords.json')
@@ -92,10 +114,13 @@ const buildAllSeries = () => {
   if (layer === 'routes' || layer === 'both') {
     const routes = getAllRoutes()
     const linesData = routes.map(r => {
-      const fromCoord = cityCoords[r.from]
-      const toCoord = cityCoords[r.to]
+      const from = normalizeCityName(r.from)
+      const to = normalizeCityName(r.to)
+      if (from === to) return null
+      const fromCoord = cityCoords[from]
+      const toCoord = cityCoords[to]
       if (!fromCoord || !toCoord) return null
-      return { coords: [fromCoord, toCoord], transport: r.transport, from: r.from, to: r.to }
+      return { coords: [fromCoord, toCoord], transport: r.transport, from, to }
     }).filter(Boolean)
 
     if (linesData.length > 0) {
