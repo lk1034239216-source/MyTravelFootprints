@@ -132,9 +132,6 @@ const doDelete = () => {
                     </div>
                   </div>
                   <div class="mini-chart">
-                    <div class="chart-labels">
-                      <span v-for="(_, i) in rec.dailySteps" :key="i">{{ i + 1 }}天</span>
-                    </div>
                     <div class="chart-bars">
                       <div
                         v-for="(steps, i) in rec.dailySteps"
@@ -148,6 +145,7 @@ const doDelete = () => {
                         >
                           <span class="bar-val" v-if="steps >= 10000">{{ (steps / 10000).toFixed(1) }}w</span>
                         </div>
+                        <span class="bar-label">D{{ i + 1 }}</span>
                       </div>
                     </div>
                   </div>
@@ -242,14 +240,13 @@ h2 { font-size: 30px; font-weight: 700; background: linear-gradient(135deg,#60a5
 .stat-box { flex: 1; text-align: center; padding: 10px 6px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.04); }
 .stat-val { display: block; font-size: 18px; font-weight: 700; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; line-height: 1.2; }
 .stat-label { display: block; font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 4px; }
-.mini-chart { }
-.chart-labels { display: flex; justify-content: space-around; margin-bottom: 4px; }
-.chart-labels span { font-size: 10px; color: rgba(255,255,255,0.3); text-align: center; flex: 1; }
-.chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 64px; padding: 0 2px; }
-.bar-wrapper { flex: 1; display: flex; align-items: flex-end; justify-content: center; height: 100%; }
-.bar { width: 100%; max-width: 32px; background: linear-gradient(180deg, #3b82f6, #1d4ed8); border-radius: 4px 4px 0 0; transition: height 0.3s; position: relative; min-height: 4px; }
+.mini-chart { margin-top: 4px; }
+.chart-bars { display: flex; align-items: flex-end; gap: 4px; height: 56px; padding: 0 2px; }
+.bar-wrapper { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+.bar { width: 100%; max-width: 28px; background: linear-gradient(180deg, #3b82f6, #1d4ed8); border-radius: 4px 4px 0 0; transition: height 0.3s; position: relative; min-height: 4px; }
 .bar.peak { background: linear-gradient(180deg, #fbbf24, #f59e0b); }
 .bar-val { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); font-size: 9px; color: rgba(255,255,255,0.5); white-space: nowrap; }
+.bar-label { font-size: 9px; color: rgba(255,255,255,0.3); white-space: nowrap; }
 
 .foot { padding: 14px 24px 20px; border-top: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
 .btn { width: 100%; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; border: none; }
